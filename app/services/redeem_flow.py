@@ -195,11 +195,35 @@ class RedeemFlowService:
             db_session.expire_all()
             
             logger.info(f"正在尝试兑换 (第 {attempt + 1}/{max_retries} 次尝试): email={email}, code={code}")
+            
+            # 1. 快速检查并执行耗时的质保验证 (事务外执行，避免 SQLite 锁定时间过长)
+            try:
+                stmt = select(RedemptionCode).where(RedemptionCode.code == code)
+                res = await db_session.execute(stmt)
+                rc_pre = res.scalar_one_or_none()
+                
+                if not rc_pre:
+                    return {"success": False, "error": "兑换码不存在"}
+                
+                if rc_pre.has_warranty and rc_pre.status in ["warranty_active", "used"]:
+                    # 耗时的网络请求和状态检测放在事务外
+                    warranty_check = await self.warranty_service.validate_warranty_reuse(
+                        db_session, code, email
+                    )
+                    if not warranty_check["success"] or not warranty_check["can_reuse"]:
+                        # 确保返回字符串，防止 routes 层 NoneType 报错
+                        error_msg = warranty_check.get("reason") or warranty_check.get("error") or "质保校验未通过"
+                        return {"success": False, "error": error_msg}
+            except Exception as e:
+                logger.error(f"兑换前置校验异常: {e}")
+                if attempt < max_retries - 1: continue
+                return {"success": False, "error": f"系统校验异常: {str(e)}"}
+
             team_id_final = None
             try:
                 # --- 阶段 1: 验证并占位 (短事务) ---
                 async with db_session.begin():
-                    # 1. 验证兑换码 (在事务内验证确保原子性)
+                    # 再次验证并锁定 (确保原子性)
                     validate_result = await self.redemption_service.validate_code(code, db_session)
                     if not validate_result["success"]:
                         return {"success": False, "error": validate_result["error"]}
@@ -259,15 +283,10 @@ class RedeemFlowService:
                     is_first_use = redemption_code.status == "unused"
                     
                     if not is_first_use:
-                        # 如果不是首次使用，检查是否为质保码且可重复使用
-                        if is_warranty_code:
-                            warranty_check = await self.warranty_service.validate_warranty_reuse(
-                                db_session, code, email
-                            )
-                            if not warranty_check["success"] or not warranty_check["can_reuse"]:
-                                return {"success": False, "error": warranty_check.get("reason", "兑换码质保验证未通过")}
-                        else:
+                        if not is_warranty_code:
                             return {"success": False, "error": "兑换码已被占用"}
+                        # 针对质保码，已经在事务外通过 validate_warranty_reuse 完成了深度验证和孤儿记录清理
+                        # 事务内只需通过 allowed_statuses 过滤掉非法状态即可
 
                     # 4. 更新状态执行占位
                     if is_warranty_code:

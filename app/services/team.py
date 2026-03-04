@@ -990,7 +990,10 @@ class TeamService:
             team.error_count = 0  # 同步成功，重置错误次数
             team.last_sync = get_now()
 
-            await db_session.commit()
+            if not db_session.in_transaction():
+                await db_session.commit()
+            else:
+                await db_session.flush()
 
             logger.info(f"Team 同步成功: ID {team_id}, 成员数 {current_members}")
 

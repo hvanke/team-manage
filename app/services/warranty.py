@@ -329,7 +329,10 @@ class WarrantyService:
                             logger.warning(f"自愈逻辑: 发现孤儿记录 (Email: {record.email}, Team: {team.id}), 但同步结果中不包含该成员。正在清理记录。")
                             # 删除该孤儿记录
                             await db_session.delete(record)
-                            await db_session.commit()
+                            if not db_session.in_transaction():
+                                await db_session.commit()
+                            else:
+                                await db_session.flush()
                             continue # 继续检查下一个记录或结束循环
 
                         # 如果是同一个邮箱且确实在 Team 中，提示已在有效 Team 中
