@@ -917,6 +917,7 @@ class TeamService:
             )
 
             all_member_emails = set()
+            current_members = 0
             if members_result["success"]:
                 current_members += members_result["total"]
                 for m in members_result.get("members", []):
