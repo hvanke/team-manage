@@ -271,15 +271,29 @@ class RedeemFlowService:
                 logger.info(f"兑换核心步骤执行成功: {email} -> Team {team_id_final}")
                 
                 # 5. 后置异步任务 (循环检测 3 次，确保 API 数据同步)
+                is_verified = False
                 for i in range(3):
                     await asyncio.sleep(5)
                     sync_res = await self.team_service.sync_team_info(team_id_final, db_session)
                     member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                     if email.lower() in member_emails:
+                        is_verified = True
                         logger.info(f"Team {team_id_final} 同步确认成功 (尝试第 {i+1} 次)")
                         break
                     if i < 2:
                         logger.warning(f"Team {team_id_final} 同步尚未见到成员 {email}，准备第 {i+2} 次重试...")
+                
+                if not is_verified:
+                    logger.error(f"检测到“虚假成功”: Team {team_id_final} 兑换成功但 3 次后仍查不到成员 {email}")
+                    # 获取 Team 对象并通过 _handle_api_error 标记为异常
+                    stmt = select(Team).where(Team.id == team_id_final)
+                    t_res = await db_session.execute(stmt)
+                    target_t = t_res.scalar_one_or_none()
+                    if target_t:
+                        await self.team_service._handle_api_error(
+                            {"success": False, "error": "兑换成功但 3 次同步列表均未见成员", "error_code": "ghost_success"},
+                            target_t, db_session
+                        )
                 
                 try:
                     asyncio.create_task(notification_service.check_and_notify_low_stock())

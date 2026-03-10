@@ -70,6 +70,14 @@ class TeamService:
             if any(kw in error_msg for kw in ban_keywords):
                 is_banned = True
                 
+        # 1.1 判定是否为“虚假成功” (Ghost Success)
+        if error_code == "ghost_success":
+            logger.error(f"检测到 Team {team.id} ({team.email}) 存在“虚假成功”现象 (邀请返回 200 但列表无成员)，标记为 error")
+            team.status = "error"
+            if not db_session.in_transaction():
+                await db_session.commit()
+            return True
+
         if is_banned:
             # 简化状态描述判断
             if "workspace" in error_msg or "workspace" in (error_code or ""):
