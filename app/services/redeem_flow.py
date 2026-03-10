@@ -422,7 +422,8 @@ class RedeemFlowService:
                                 if target_team.error_count >= 2:
                                     logger.error(f"Team {target_team.id} 连续虚假成功/错误 {target_team.error_count} 次，标记为 error")
                                     target_team.status = "error"
-                                await db_session.commit()
+                        # 提交由 context manager 自动完成
+                        pass
                         
                         # 触发回退并进入重试逻辑
                         await self._rollback_redemption(db_session, code, team_id_final, email=email)
