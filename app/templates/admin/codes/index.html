@@ -44,12 +44,16 @@
     <div class="section-header">
         <div class="header-group">
             <div class="filter-tabs">
-                <button onclick="filterByStatus('all')" class="filter-tab active" id="filter-all">全部</button>
-                <button onclick="filterByStatus('unused')" class="filter-tab" id="filter-unused">未使用</button>
-                <button onclick="filterByStatus('used')" class="filter-tab" id="filter-used">已使用</button>
-                <button onclick="filterByStatus('warranty_active')" class="filter-tab"
-                    id="filter-warranty_active">质保中</button>
-                <button onclick="filterByStatus('expired')" class="filter-tab" id="filter-expired">已过期</button>
+                <button onclick="filterByStatus('')" class="filter-tab {% if not status_filter %}active{% endif %}"
+                    id="filter-all">全部</button>
+                <button onclick="filterByStatus('unused')"
+                    class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
+                    id="filter-unused">未使用</button>
+                <button onclick="filterByStatus('used')"
+                    class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
+                <button onclick="filterByStatus('expired')"
+                    class="filter-tab {% if status_filter == 'expired' %}active{% endif %}"
+                    id="filter-expired">已过期</button>
             </div>
 
             <form action="/admin/codes" method="get" class="search-form">
@@ -202,8 +206,9 @@
 
         {% if pagination.total_pages > 1 %}
         {% set search_param = '&search=' + search|urlencode if search else '' %}
+        {% set status_param = '&status_filter=' + status_filter|urlencode if status_filter else '' %}
         {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 50 else '' %}
-        {% set base_query = search_param + per_page_param %}
+        {% set base_query = search_param + status_param + per_page_param %}
 
         <div class="pagination-controls">
             <!-- 首页 -->
@@ -556,40 +561,16 @@
     // 当前筛选状态
     let currentFilter = 'all';
 
-    // 按状态筛选
+    // 按状态筛选 (服务器端筛选)
     function filterByStatus(status) {
-        currentFilter = status;
-
-        // 更新按钮状态
-        document.querySelectorAll('.filter-tab').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        const activeBtn = document.getElementById(`filter-${status}`);
-        if (activeBtn) activeBtn.classList.add('active');
-
-        // 筛选表格行
-        const rows = document.querySelectorAll('#codesTableBody tr');
-        rows.forEach(row => {
-            const rowStatus = row.getAttribute('data-status');
-            if (status === 'all') {
-                row.style.display = '';
-            } else if (status === 'used') {
-                // "已使用" 包含 used 和 warranty_active
-                if (rowStatus === 'used' || rowStatus === 'warranty_active') {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            } else if (rowStatus === status) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-                // 如果行被隐藏，取消其复选框的选择
-                const cb = row.querySelector('.code-checkbox');
-                if (cb) cb.checked = false;
-            }
-        });
-        updateSelectionCount();
+        const url = new URL(window.location.href);
+        if (status && status !== 'all') {
+            url.searchParams.set('status_filter', status);
+        } else {
+            url.searchParams.delete('status_filter');
+        }
+        url.searchParams.set('page', 1);
+        window.location.href = url.toString();
     }
 
     // 删除兑换码

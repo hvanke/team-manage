@@ -687,6 +687,7 @@ async def codes_list_page(
     page: int = 1,
     per_page: int = 50,
     search: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -698,6 +699,7 @@ async def codes_list_page(
         page: 页码
         per_page: 每页数量
         search: 搜索关键词
+        status_filter: 状态筛选
         db: 数据库会话
         current_user: 当前用户（需要登录）
 
@@ -707,11 +709,13 @@ async def codes_list_page(
     try:
         from app.main import templates
 
-        logger.info(f"管理员访问兑换码列表页面, search={search}, per_page={per_page}")
+        logger.info(f"管理员访问兑换码列表页面, search={search}, status={status_filter}, per_page={per_page}")
 
         # 获取兑换码 (分页)
         # per_page = 50 (Removed hardcoded value)
-        codes_result = await redemption_service.get_all_codes(db, page=page, per_page=per_page, search=search)
+        codes_result = await redemption_service.get_all_codes(
+            db, page=page, per_page=per_page, search=search, status=status_filter
+        )
         codes = codes_result.get("codes", [])
         total_codes = codes_result.get("total", 0)
         total_pages = codes_result.get("total_pages", 1)
@@ -744,6 +748,7 @@ async def codes_list_page(
                 "codes": codes,
                 "stats": stats,
                 "search": search,
+                "status_filter": status_filter,
                 "pagination": {
                     "current_page": current_page,
                     "total_pages": total_pages,

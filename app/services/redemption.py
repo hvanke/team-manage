@@ -398,7 +398,8 @@ class RedemptionService:
         db_session: AsyncSession,
         page: int = 1,
         per_page: int = 50,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        status: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取所有兑换码
@@ -408,6 +409,7 @@ class RedemptionService:
             page: 页码
             per_page: 每页数量
             search: 搜索关键词 (兑换码或邮箱)
+            status: 状态筛选
 
         Returns:
             结果字典,包含 success, codes, total, total_pages, current_page, error
@@ -417,14 +419,24 @@ class RedemptionService:
             count_stmt = select(func.count(RedemptionCode.id))
             stmt = select(RedemptionCode).order_by(RedemptionCode.created_at.desc())
 
-            # 2. 如果提供了搜索关键词,添加过滤条件
+            # 2. 如果提供了筛选条件,添加过滤条件
+            filters = []
             if search:
-                search_filter = or_(
+                filters.append(or_(
                     RedemptionCode.code.ilike(f"%{search}%"),
                     RedemptionCode.used_by_email.ilike(f"%{search}%")
-                )
-                count_stmt = count_stmt.where(search_filter)
-                stmt = stmt.where(search_filter)
+                ))
+            
+            if status:
+                if status == 'used':
+                    # "已使用" 在查询中通常指窄义的 used, 但如果要包含质保中, 逻辑如下
+                    filters.append(RedemptionCode.status.in_(['used', 'warranty_active']))
+                else:
+                    filters.append(RedemptionCode.status == status)
+            
+            if filters:
+                count_stmt = count_stmt.where(and_(*filters))
+                stmt = stmt.where(and_(*filters))
 
             # 3. 获取总数
             count_result = await db_session.execute(count_stmt)
@@ -888,6 +900,7 @@ class RedemptionService:
                 "total": total,
                 "unused": status_counts.get("unused", 0),
                 "used": used_count,
+                "warranty_active": status_counts.get("warranty_active", 0),
                 "expired": status_counts.get("expired", 0)
             }
         except Exception as e:
